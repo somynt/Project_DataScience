@@ -7,8 +7,11 @@ Original file is located at
     https://colab.research.google.com/drive/1vXTim9PVjB-LyzCYc7MlFrusrxg4xd4V
 """
 
-!pip install flask torch pandas scikit-learn pyngrok
+# Install requirements first:  pip install -r requirements.txt
+# Run:  python project_part_3_adhdpredictionapp.py   then open http://127.0.0.1:5000
+# Optional public link via ngrok: set the NGROK_AUTHTOKEN environment variable.
 
+import os
 import torch
 import torch.nn as nn
 import joblib
@@ -16,8 +19,9 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from flask import Flask, request, jsonify, render_template_string
-from pyngrok import ngrok
-import joblib
+from scipy.stats import skew, kurtosis
+
+from config import RBM_MODEL_PATH, FNN_MODEL_PATH, SCALER_PATH
 
 # Define the RBM class
 class RBM(nn.Module):
@@ -87,8 +91,8 @@ class FNN(nn.Module):
         return x
 
 # Load the state dictionaries
-rbm_state_dict = torch.load('/content/drive/MyDrive/Project_ADHD/rbm_model.pth', map_location=torch.device('cpu'))
-fnn_state_dict = torch.load('/content/drive/MyDrive/Project_ADHD/fnn_model.pth', map_location=torch.device('cpu'))
+rbm_state_dict = torch.load(RBM_MODEL_PATH, map_location=torch.device('cpu'))
+fnn_state_dict = torch.load(FNN_MODEL_PATH, map_location=torch.device('cpu'))
 
 # Extract the dimensions from the state dictionary
 n_visible = rbm_state_dict['W'].size(0)
@@ -105,7 +109,10 @@ rbm.load_state_dict(rbm_state_dict)
 fnn.load_state_dict(fnn_state_dict)
 
 # Load the scaler used during training
-scaler = joblib.load('/content/drive/MyDrive/Project_ADHD/scaler.pkl')
+scaler = joblib.load(SCALER_PATH)
+
+# Column order the scaler (and therefore the models) were trained on
+MODEL_COLUMNS = list(scaler.feature_names_in_)
 
 # Define a function to extract features
 def extract_features(v_data, rbm):
@@ -114,11 +121,6 @@ def extract_features(v_data, rbm):
 
 # Initialize Flask app
 app = Flask(__name__)
-
-# Load RBM, FNN models, and scaler
-rbm = torch.load('/content/drive/MyDrive/Project_ADHD/rbm_model.pth')
-fnn = torch.load('/content/drive/MyDrive/Project_ADHD/fnn_model.pth')
-scaler = joblib.load('/content/drive/MyDrive/Project_ADHD/scaler.pkl')
 
 # List of all features
 FEATURES = [
@@ -208,40 +210,67 @@ def index():
         </html>
     ''', FEATURES=FEATURES)
 
+ENGLISH_COLUMNS = [f for f in FEATURES if f.startswith("Eng_")]
+MATH_COLUMNS = [f for f in FEATURES if f.startswith("Math_")]
+
+
+def build_model_input(data):
+    """
+    Turn the submitted form values into one row in the exact column order
+    used during training, adding the summary statistics the model expects.
+    """
+    row = {feature: float(data.get(feature, 0)) for feature in FEATURES}
+
+    english = [row[c] for c in ENGLISH_COLUMNS]
+    maths = [row[c] for c in MATH_COLUMNS]
+    row.update({
+        "english_mean": np.mean(english),
+        "english_std": np.std(english),
+        "english_skew": np.nan_to_num(skew(english)),
+        "english_kurtosis": np.nan_to_num(kurtosis(english)),
+        "math_mean": np.mean(maths),
+        "math_std": np.std(maths),
+        "math_skew": np.nan_to_num(skew(maths)),
+        "math_kurtosis": np.nan_to_num(kurtosis(maths)),
+    })
+
+    # student_id was included as a column during training; it carries no
+    # information, so use the training average to keep it neutral.
+    if "student_id" in MODEL_COLUMNS:
+        row["student_id"] = scaler.mean_[MODEL_COLUMNS.index("student_id")]
+
+    return pd.DataFrame([row])[MODEL_COLUMNS]
+
+
 @app.route('/predict', methods=['POST'])
 def predict():
     data = request.get_json()
 
-    # Ensure all features are present in the data
-    for feature in FEATURES:
-        if feature not in data:
-            data[feature] = 0  # Default value for missing features
-
-    # Convert to DataFrame
-    student_data = pd.DataFrame([data])
-
     # Scale data
-    student_data_scaled = scaler.transform(student_data)
+    student_data_scaled = scaler.transform(build_model_input(data))
 
-    # Extract features using RBM
-    student_features = extract_features(student_data_scaled, rbm)
-    student_tensor = torch.from_numpy(student_features).float()
-
-    # Predict using FNN
-    fnn.eval()
+    # Extract features using RBM (use probabilities, not random samples,
+    # so the same answers always give the same result)
     with torch.no_grad():
-        prediction = fnn(student_tensor).item()
+        v = torch.from_numpy(student_data_scaled).float()
+        hidden = torch.sigmoid(torch.matmul(v, rbm.W) + rbm.h_bias)
+
+        # Predict using FNN
+        fnn.eval()
+        prediction = fnn(hidden).item()
 
     # Determine ADHD status
     result = "ADHD" if prediction >= 0.5 else "No ADHD"
-    return jsonify({'prediction': result})
+    return jsonify({'prediction': result, 'probability': round(prediction, 3)})
 
-# Authenticate ngrok with your token
-ngrok.set_auth_token('2r9HqEPxylu1Ah6fPvv1nCAPFfc_47SPYpuiP3r7eB3HcpWNh')
 
-# Start ngrok tunnel
-public_url = ngrok.connect(5000)
-print(f" * ngrok URL: {public_url}")
+if __name__ == '__main__':
+    # Optional public URL (e.g. when running in Colab). Never hard-code the
+    # token: set NGROK_AUTHTOKEN in the environment instead.
+    token = os.environ.get("NGROK_AUTHTOKEN")
+    if token:
+        from pyngrok import ngrok
+        ngrok.set_auth_token(token)
+        print(f" * ngrok URL: {ngrok.connect(5000)}")
 
-# Run the Flask app
-app.run(debug=True, use_reloader=False)
+    app.run(debug=False, use_reloader=False)

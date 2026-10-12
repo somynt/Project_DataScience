@@ -59,9 +59,10 @@ from sklearn.metrics import (accuracy_score, precision_score, recall_score,
                              confusion_matrix, ConfusionMatrixDisplay)
 import joblib
 
+from config import DATA_PATH, RBM_MODEL_PATH, FNN_MODEL_PATH, SCALER_PATH
+
 # Load the dataset
-data = pd.read_excel('/content/drive/MyDrive/Project_ADHD/'
-                     'student_data_ADHD.xlsx')
+data = pd.read_excel(DATA_PATH)
 
 # Separate features and target variable
 X = data.drop('is_adhd', axis=1)  # Features
@@ -354,11 +355,9 @@ optimizer = optim.Adam(fnn.parameters(), lr=0.001)
 train_fnn(fnn, criterion, optimizer, train_loader_rbm, num_epochs=10)
 
 # Save the trained models and scaler
-torch.save(rbm.state_dict(), '/content/drive/MyDrive/Project_ADHD/'
-                             'rbm_model.pth')
-torch.save(fnn.state_dict(), '/content/drive/MyDrive/Project_ADHD/'
-                             'fnn_model.pth')
-joblib.dump(scaler, '/content/drive/MyDrive/Project_ADHD/scaler.pkl')
+torch.save(rbm.state_dict(), RBM_MODEL_PATH)
+torch.save(fnn.state_dict(), FNN_MODEL_PATH)
+joblib.dump(scaler, SCALER_PATH)
 
 print("Models and scaler saved successfully!")
 

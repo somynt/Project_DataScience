@@ -1,0 +1,10 @@
+# Credentials - never commit
+.env
+kaggle.json
+
+# Python / Jupyter
+__pycache__/
+.ipynb_checkpoints/
+
+# Generated charts
+*.png
