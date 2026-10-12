@@ -36,6 +36,8 @@ import random
 import pandas as pd
 import numpy as np
 from scipy.stats import truncnorm, skew, kurtosis
+
+from config import DATA_PATH
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -444,8 +446,8 @@ if __name__ == "__main__":
     df = generate_student_data(num_students, adhd_percentage=adhd_percentage,
                                noise_percentage=noise_percentage)
 
-    df.to_excel("student_data_non_normalized.xlsx", index=False)
-    print("Student data generated and saved to student_data_non_normalized.xlsx")
+    df.to_excel(DATA_PATH, index=False)
+    print(f"Student data generated and saved to {DATA_PATH}")
 
     parent_columns = [f'parent_inatt_q{i + 1}' for i in range(9)] + \
                      [f'parent_hyper_q{i + 1}' for i in range(9)] + \

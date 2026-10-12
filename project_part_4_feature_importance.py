@@ -14,6 +14,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 
+from config import DATA_PATH
+
 def load_data(filepath):
     """
     Load the dataset from an Excel file.
@@ -109,7 +111,7 @@ def main():
     importance.
     """
     # Load the dataset
-    filepath = '/content/drive/MyDrive/Project_ADHD/student_data_ADHD.xlsx'
+    filepath = DATA_PATH
     data = load_data(filepath)
 
     # Preprocess the data
